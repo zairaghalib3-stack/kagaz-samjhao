@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kagaz Samjhao</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;max-width:720px;margin:0 auto;padding:16px;background:#f6f7fb;color:#1c1c28}
+  h1{margin-bottom:4px}
+  .card{background:#fff;border-radius:12px;padding:16px;margin:14px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  label{display:block;font-weight:600;margin:10px 0 4px}
+  input,select,button{font-size:16px;padding:10px;border-radius:8px;border:1px solid #ccd;width:100%;box-sizing:border-box}
+  button{background:#2563eb;color:#fff;border:0;font-weight:600;cursor:pointer;margin-top:12px}
+  button:disabled{background:#9aa}
+  img{max-width:100%;border-radius:8px;margin-top:10px}
+  #out{white-space:pre-wrap;line-height:1.6}
+  small{color:#667}
+</style>
+</head>
+<body>
+<h1>📄 Kagaz Samjhao</h1>
+<p>Bijli/gas ka bill, challan, legal notice ya bank letter ki photo upload karo. AI saade lafzon mein samjha dega.</p>
+
+<div class="card">
+  <label>Gemini API key <small>(free: aistudio.google.com — sirf aapke browser mein rehti hai)</small></label>
+  <input id="key" type="password" placeholder="AIza...">
+  <label>Model name <small>(AI Studio ki list se Gemma 4 ka exact naam)</small></label>
+  <input id="model" value="gemma-4-31b-it">
+  <label>Jawab ki zabaan</label>
+  <select id="lang">
+    <option>Roman Urdu</option><option>Urdu</option><option>English</option>
+  </select>
+</div>
+
+<div class="card">
+  <label>Kagaz ki photo</label>
+  <input id="file" type="file" accept="image/*">
+  <img id="preview" style="display:none">
+  <button id="go">Samjhao 🔍</button>
+</div>
+
+<div class="card" id="result" style="display:none">
+  <div id="out"></div>
+</div>
+
+<p><small>Open-source • Gemma 4 + Gemini API • Ye AI ki madad hai, zaroori faisle se pehle asal idare se tasdeeq kar lo.</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+let imageB64 = null;
+
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    const max = 1600, s = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = img.width * s; c.height = img.height * s;
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const url = c.toDataURL("image/jpeg", 0.85);
+    imageB64 = url.split(",")[1];
+    $("preview").src = url; $("preview").style.display = "block";
+  };
+  img.src = URL.createObjectURL(f);
+});
+
+function esc(t){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+$("go").addEventListener("click", async () => {
+  const key = $("key").value.trim(), model = $("model").value.trim(), lang = $("lang").value;
+  if (!key) return alert("API key daalo");
+  if (!imageB64) return alert("Pehle kagaz ki photo upload karo");
+
+  const prompt = `Tum ek madadgar assistant ho jo Pakistan ke aam logon ko official kagaz samjhate ho.
+Is kagaz ki tasveer dekho aur ${lang} mein, bohat saade lafzon mein, in headings ke saath jawab do:
+1. Ye kagaz kya hai? (ek-do line)
+2. Kitna paisa dena hai aur kab tak? (amount, due date, kis ko)
+3. Suspicious ya zyada charges? (agar kuch ajeeb lage to batao, warna likho "kuch ajeeb nahi mila")
+4. Ab mujhe kya karna chahiye? (3 asaan steps)
+Agar tasveer saaf nahi hai to saaf bata do. Koi cheez apni taraf se mat banao.`;
+
+  $("go").disabled = true; $("go").textContent = "Kagaz parha ja raha hai...";
+  $("result").style.display = "block"; $("out").textContent = "";
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({contents: [{parts: [
+        {text: prompt},
+        {inline_data: {mime_type: "image/jpeg", data: imageB64}}
+      ]}]})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ? data.error.message : "Request fail hui");
+    const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
+    $("out").innerHTML = esc(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  } catch (err) {
+    $("out").textContent = "Masla aaya: " + err.message + "\n\nModel name check karo.";
+  } finally {
+    $("go").disabled = false; $("go").textContent = "Samjhao 🔍";
+  }
+});
+</script>
+</body>
+</html>
